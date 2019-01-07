@@ -47,7 +47,7 @@ class BaseSnapshot implements Snapshot {
                String... manifestFiles) {
     this(ops, snapshotId, null, System.currentTimeMillis(),
         Lists.transform(Arrays.asList(manifestFiles),
-            path -> new GenericManifestFile(ops.newInputFile(path), 0)));
+            path -> new GenericManifestFile(ops.io().newInputFile(path), 0)));
   }
 
   BaseSnapshot(TableOperations ops,
@@ -135,8 +135,8 @@ class BaseSnapshot implements Snapshot {
 
     // accumulate adds and deletes from all manifests.
     // because manifests can be reused in newer snapshots, filter the changes by snapshot id.
-    for (String manifest : Iterables.transform(manifests, ManifestFile::path)) {
-      try (ManifestReader reader = ManifestReader.read(ops.newInputFile(manifest))) {
+    for (String manifest : Iterables.transform(manifests(), ManifestFile::path)) {
+      try (ManifestReader reader = ManifestReader.read(ops.io().newInputFile(manifest))) {
         for (ManifestEntry add : reader.addedFiles()) {
           if (add.snapshotId() == snapshotId) {
             adds.add(add.file().copy());
@@ -161,7 +161,7 @@ class BaseSnapshot implements Snapshot {
     return Objects.toStringHelper(this)
         .add("id", snapshotId)
         .add("timestamp_ms", timestampMillis)
-        .add("manifests", manifests)
+        .add("manifests", manifests())
         .toString();
   }
 }

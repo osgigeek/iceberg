@@ -47,7 +47,7 @@ class RemoveSnapshots implements ExpireSnapshots {
   private final Consumer<String> defaultDelete = new Consumer<String>() {
     @Override
     public void accept(String file) {
-      ops.deleteFile(file);
+      ops.io().deleteFile(file);
     }
   };
 
@@ -112,7 +112,10 @@ class RemoveSnapshots implements ExpireSnapshots {
         .onlyRetryOn(CommitFailedException.class)
         .run(item -> {
           TableMetadata updated = internalApply();
-          ops.commit(base, updated);
+          // only commit the updated metadata if at least one snapshot was removed
+          if (updated.snapshots().size() != base.snapshots().size()) {
+            ops.commit(base, updated);
+          }
         });
 
     LOG.info("Committed snapshot changes; cleaning up expired manifests and data files.");
@@ -156,9 +159,12 @@ class RemoveSnapshots implements ExpireSnapshots {
         .onFailure((item, exc) ->
             LOG.warn("Failed to get deleted files: this may cause orphaned data files", exc)
         ).run(manifest -> {
-          // even if the manifest is still used, it may contain files that can be deleted
-          // TODO: eliminate manifests with no deletes without scanning
-          try (ManifestReader reader = ManifestReader.read(ops.newInputFile(manifest.path()))) {
+          if (manifest.deletedFilesCount() != null && manifest.deletedFilesCount() == 0) {
+            return;
+          }
+
+          // the manifest has deletes, scan it to find files to delete
+          try (ManifestReader reader = ManifestReader.read(ops.io().newInputFile(manifest.path()))) {
             for (ManifestEntry entry : reader.entries()) {
               // if the snapshot ID of the DELETE entry is no longer valid, the data can be deleted
               if (entry.status() == ManifestEntry.Status.DELETED &&
